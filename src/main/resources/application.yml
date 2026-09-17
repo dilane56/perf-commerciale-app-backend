@@ -11,7 +11,7 @@ spring:
     open-in-view: false
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.SQLServerDialect
+
 
   flyway:
     enabled: true
@@ -26,3 +26,6 @@ springdoc:
     path: /v3/api-docs
   swagger-ui:
     path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: method
+    display-request-duration: true
