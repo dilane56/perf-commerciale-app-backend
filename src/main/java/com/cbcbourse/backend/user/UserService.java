@@ -32,12 +32,12 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public List<User> findAll(String roleName, Boolean active) {
-        Specification<User> spec = null;
+        Specification<User> spec = Specification.unrestricted();
         if (roleName != null && !roleName.isBlank()) {
-            spec = UserSpecifications.hasRoleName(roleName);
+            spec = spec.and(UserSpecifications.hasRoleName(roleName));
         }
         if (active != null) {
-            spec = spec == null ? UserSpecifications.isActive(active) : spec.and(UserSpecifications.isActive(active));
+            spec = spec.and(UserSpecifications.isActive(active));
         }
         return userRepository.findAll(spec);
     }
