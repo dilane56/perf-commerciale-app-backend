@@ -1,5 +1,6 @@
 package com.cbcbourse.backend.auth;
 
+import com.cbcbourse.backend.auth.dto.CurrentUserResponse;
 import com.cbcbourse.backend.auth.dto.LoginRequest;
 import com.cbcbourse.backend.auth.dto.TokenResponse;
 import com.cbcbourse.backend.common.exception.ResourceNotFoundException;
@@ -37,6 +38,17 @@ public class AuthService {
 
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
         return buildTokenResponse(principal.getUser());
+    }
+
+    /**
+     * Relit le profil et les permissions depuis la base : le frontend peut ainsi restaurer
+     * la session apres un rechargement de page sans se fier au contenu (potentiellement perime)
+     * de l'access token.
+     */
+    public CurrentUserResponse currentUser(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable"));
+        return CurrentUserResponse.from(user);
     }
 
     public TokenResponse refresh(String refreshToken) {

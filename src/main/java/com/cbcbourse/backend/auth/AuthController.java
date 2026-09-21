@@ -1,5 +1,7 @@
 package com.cbcbourse.backend.auth;
 
+import com.cbcbourse.backend.auth.dto.AuthenticatedUser;
+import com.cbcbourse.backend.auth.dto.CurrentUserResponse;
 import com.cbcbourse.backend.auth.dto.LoginRequest;
 import com.cbcbourse.backend.auth.dto.RefreshTokenRequest;
 import com.cbcbourse.backend.auth.dto.TokenResponse;
@@ -10,9 +12,12 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -54,6 +59,20 @@ public class AuthController {
     @PostMapping("/refresh")
     public TokenResponse refresh(@Valid @RequestBody RefreshTokenRequest request) {
         return authService.refresh(request.refreshToken());
+    }
+
+    @Operation(summary = "Profil de l'utilisateur connecte", description = "Retourne l'utilisateur authentifie, ses roles et ses permissions effectives, "
+            + "relus depuis la base. Permet au frontend de restaurer la session apres un rechargement de page.")
+    @SecurityRequirement(name = "bearerAuth")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Profil retourne",
+                    content = @Content(schema = @Schema(implementation = CurrentUserResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Token absent, invalide ou expire",
+                    content = @Content(schema = @Schema(implementation = ApiError.class)))
+    })
+    @GetMapping("/me")
+    public CurrentUserResponse me(@AuthenticationPrincipal AuthenticatedUser principal) {
+        return authService.currentUser(principal.id());
     }
 
     @Operation(summary = "Deconnexion", description = "V1 stateless : invalide les tokens cote client uniquement "
