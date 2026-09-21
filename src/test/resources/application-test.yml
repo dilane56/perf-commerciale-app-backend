@@ -1,0 +1,24 @@
+# Profil utilise par les tests qui demarrent le contexte complet : base en memoire, pas de Flyway
+# (les migrations sont en T-SQL et visent SQL Server), schema genere depuis les entites.
+spring:
+  datasource:
+    url: jdbc:h2:mem:perfcommerciale-test;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+
+  flyway:
+    enabled: false
+
+app:
+  jwt:
+    secret: secret-de-test-uniquement-pour-les-tests-256-bits-minimum
+    access-token-expiration-minutes: 30
+    refresh-token-expiration-days: 7
+  cors:
+    allowed-origins: http://localhost:3000

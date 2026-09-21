@@ -23,14 +23,14 @@ Construire une application permettant au **service commercial** de l'entreprise 
 
 ## 3. Roadmap générale (pour contexte — ne pas développer tout de suite)
 
-1. ✅ **Module en cours : Utilisateurs, Rôles & Permissions** (objet de ce document)
-2. Modèle de données KPI générique (indépendant de la source)
+1. ✅ **Terminé : Utilisateurs, Rôles & Permissions**
+2. 🔄 **Module en cours : Modèle de données KPI générique** (indépendant de la source) — objet de ce document
 3. Module de saisie manuelle temporaire (en attendant l'intégration Atlantis)
 4. Module Objectifs commerciaux (fixation + suivi du taux d'atteinte)
 5. Tableaux de bord (vue individuelle / vue managériale)
 6. Intégration Atlantis SGI (une fois les modalités d'accès connues)
 
-Ce fichier se concentre uniquement sur le **point 1**.
+Ce fichier se concentre sur le **point 2**. Le point 1 est déjà implémenté — ne pas le reconstruire, s'appuyer sur les entités `User`, `Role`, `Permission` existantes (notamment `User` comme référence pour le commercial référent d'un client, voir section 6).
 
 ---
 
@@ -173,8 +173,76 @@ app/
 
 ---
 
-## 6. Ce qui n'est PAS à faire maintenant
+## 6. Module actuel : Modèle de données KPI générique
+
+### 6.1. Objectif du module
+
+Concevoir un modèle de données qui capture les **événements bruts** de l'activité commerciale (clients, rendez-vous, transactions), indépendamment de toute source (Atlantis SGI plus tard, saisie manuelle en attendant). Les KPI (nombre de clients, AUM, commissions, activité) sont **calculés à la demande** à partir de ces événements — ils ne sont pas stockés en dur, pour rester flexibles si les règles d'attribution ou de calcul évoluent.
+
+### 6.2. Contexte métier à respecter
+
+L'équipe commerciale actuelle est petite (2 commerciaux + 1 responsable). Ils prospectent souvent **ensemble** (en binôme, parfois avec le responsable présent pour les personnes morales), mais chaque commercial a **sa propre liste de clients à prospecter**. Il faut donc distinguer deux notions :
+
+- **Le commercial référent** d'un client : celui à qui le client est rattaché dans sa liste. C'est lui qui reçoit le crédit du client dans les KPI individuels (nouveaux clients, AUM, commissions).
+- **La participation aux rendez-vous** : qui était présent physiquement (souvent plusieurs personnes). Sert à mesurer l'activité terrain, pas la propriété du client. Sans cette distinction, le responsable qui accompagne plusieurs rendez-vous verrait ses propres KPI gonflés artificiellement.
+
+### 6.3. Modèle de données
+
+**Entité `Client`**
+- `id`
+- `type` (`PERSONNE_PHYSIQUE` ou `PERSONNE_MORALE`)
+- `nom` / `raisonSociale`
+- `commercialReferentId` (FK vers `User` — le commercial "propriétaire" du client pour les KPI)
+- `dateAcquisition` (date à laquelle le client est devenu client, sert au KPI "nouveaux clients par période")
+- `statut` (`PROSPECT`, `CLIENT_ACTIF`, `CLIENT_INACTIF`)
+- `createdAt`, `updatedAt`
+
+**Entité `RendezVous`**
+- `id`
+- `clientId` (FK vers `Client`)
+- `date`
+- `type` (`PROSPECTION`, `SUIVI`, `SIGNATURE`, ...)
+- `compteRendu` (texte libre — le rapport fait au responsable)
+- `createdAt`
+
+**Table de liaison `rendez_vous_participants`** (many-to-many entre `RendezVous` et `User`)
+- `rendezVousId`
+- `userId` (peut être un commercial ou le responsable)
+
+**Entité `Transaction`** (représente un événement financier générateur de KPI — collecte d'actif, signature de mandat, commission facturée)
+- `id`
+- `clientId` (FK vers `Client`)
+- `type` (`INTERMEDIATION`, `GESTION_SOUS_MANDAT`)
+- `montant` (decimal — en XOF/FCFA, devise unique pour l'instant)
+- `dateTransaction`
+- `description`
+- `sourceSysteme` (`MANUEL`, `ATLANTIS` — enum extensible ; permet de tracer plus tard quelles données viennent d'où)
+- `createdAt`
+
+### 6.4. KPI calculés à partir de ce modèle (requêtes/vues, pas de stockage dur)
+
+| KPI | Calcul |
+|---|---|
+| Nouveaux clients par commercial (période) | `COUNT(Client)` où `commercialReferentId = X` et `dateAcquisition` dans la période |
+| AUM / montants collectés par commercial | `SUM(Transaction.montant)` des transactions liées aux clients dont `commercialReferentId = X` |
+| Nombre de mandats de gestion signés | `COUNT(Transaction)` où `type = GESTION_SOUS_MANDAT` |
+| Activité terrain (nombre de rendez-vous) | `COUNT` via `rendez_vous_participants` où `userId = X` — valorise l'effort même sans signature |
+| Vue managériale | Agrégation sur tous les commerciaux, sans que la présence du responsable aux rendez-vous ne pollue les KPI individuels |
+
+### 6.5. Points d'attention pour Claude Code
+
+- Ne pas créer de FK directe entre `RendezVous` et un seul `User` (le commercial) — toujours passer par la table de liaison `rendez_vous_participants`, car plusieurs personnes peuvent être présentes.
+- Le champ `commercialReferentId` sur `Client` reste **unique** (un seul référent par client) — c'est volontaire, voir section 6.2. Ne pas le transformer en relation many-to-many.
+- `Transaction.montant` : utiliser un type `DECIMAL(18,2)` (ou équivalent T-SQL) — jamais de `FLOAT`/`DOUBLE` pour des montants financiers.
+- Le champ `sourceSysteme` sur `Transaction` est là pour anticiper l'intégration Atlantis : garder cette entité **ouverte à l'ajout d'un `sourceReferenceId`** (identifiant de la transaction dans Atlantis) dans une migration future, sans avoir à tout redéfinir.
+- Ce module s'appuie sur l'entité `User` déjà créée dans le module Utilisateurs/Rôles/Permissions — ne pas dupliquer une notion de "commercial" ailleurs.
+- Devise : hypothèse posée de XOF/FCFA unique. Si multi-devise s'avère nécessaire plus tard, ajouter un champ `devise` sur `Transaction` — ne pas le faire maintenant (sur-ingénierie non demandée).
+- Respecter les mêmes conventions déjà en place : package par fonctionnalité (`client/`, `rendezvous/`, `transaction/`), migrations Flyway en T-SQL, dialecte SQL Server.
+
+---
+
+## 7. Ce qui n'est PAS à faire maintenant
 
 - Ne pas intégrer Atlantis SGI (en attente d'informations)
-- Ne pas construire les modules KPI, objectifs ou dashboards (viendront après)
-- Rester concentré sur l'authentification et la gestion des utilisateurs/rôles/permissions comme fondation du projet
+- Ne pas construire les modules de saisie manuelle, objectifs ou dashboards (viendront après)
+- Rester concentré sur le modèle `Client` / `RendezVous` / `Transaction` comme fondation des KPI

@@ -11,6 +11,11 @@ spring:
       hibernate:
         format_sql: true
 
+  # db/demo contient un jeu de donnees de demonstration (clients, rendez-vous, transactions)
+  # reserve au poste de developpement : il n'est jamais charge par les autres profils.
+  flyway:
+    locations: classpath:db/migration,classpath:db/demo
+
 app:
   jwt:
     secret: change-me-locally-min-32-bytes-for-hs256
