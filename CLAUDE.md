@@ -24,13 +24,13 @@ Construire une application permettant au **service commercial** de l'entreprise 
 ## 3. Roadmap générale (pour contexte — ne pas développer tout de suite)
 
 1. ✅ **Terminé : Utilisateurs, Rôles & Permissions**
-2. 🔄 **Module en cours : Modèle de données KPI générique** (indépendant de la source) — objet de ce document
-3. Module de saisie manuelle temporaire (en attendant l'intégration Atlantis)
+2. ✅ **Terminé : Modèle de données KPI générique** (entités d'événements bruts + endpoints de lecture des KPI)
+3. 🔄 **Module en cours : Gestion du portefeuille commercial** (clients/prospects et rendez-vous) — objet de ce document
 4. Module Objectifs commerciaux (fixation + suivi du taux d'atteinte)
 5. Tableaux de bord (vue individuelle / vue managériale)
 6. Intégration Atlantis SGI (une fois les modalités d'accès connues)
 
-Ce fichier se concentre sur le **point 2**. Le point 1 est déjà implémenté — ne pas le reconstruire, s'appuyer sur les entités `User`, `Role`, `Permission` existantes (notamment `User` comme référence pour le commercial référent d'un client, voir section 6).
+Ce fichier se concentre sur le **point 3**. Les points 1 et 2 sont déjà implémentés — ne pas les reconstruire. Les sections 5 et 6 décrivent ce qui existe déjà et restent dans ce fichier à titre de référence : le module en cours écrit dans les entités `Client` et `RendezVous` (section 6) et s'appuie sur les permissions du RBAC (section 5). L'entité `Transaction` relève d'Atlantis SGI et n'est écrite par aucun module de cette application (voir section 7.2).
 
 ---
 
@@ -49,7 +49,12 @@ Ce fichier se concentre sur le **point 2**. Le point 1 est déjà implémenté �
 
 ---
 
-## 5. Module actuel : Gestion des Utilisateurs, Rôles & Permissions (RBAC)
+## 5. Module livré (référence) : Gestion des Utilisateurs, Rôles & Permissions (RBAC)
+
+> **État** : livré. Authentification JWT (`/api/auth/login`, `/refresh`, `/logout`, `/me`), CRUD utilisateurs
+> et rôles, consultation des permissions, enforcement par `@PreAuthorize("hasAuthority(...)")`. Une requête
+> sans token valide reçoit un **401**, une requête authentifiée sans la permission requise un **403**, toutes
+> deux avec un corps `ApiError`. Cette section reste ici comme référence du modèle de permissions.
 
 ### 5.1. Objectif du module
 
@@ -173,7 +178,19 @@ app/
 
 ---
 
-## 6. Module actuel : Modèle de données KPI générique
+## 6. Module livré (référence) : Modèle de données KPI générique
+
+> **État** : livré. Les entités `Client`, `RendezVous` et `Transaction` existent (migration `V5`), avec la
+> table de liaison `rendez_vous_participants`. Les KPI sont exposés en lecture seule sur `/api/kpi/me`,
+> `/api/kpi/commerciaux` et `/api/kpi/commerciaux/{userId}`, protégés respectivement par `VIEW_OWN_DASHBOARD`
+> et `VIEW_ALL_DASHBOARDS`. Un jeu de démonstration est chargé par le seul profil `dev` (`db/demo`).
+>
+> **Limite connue** : `VIEW_TEAM_DASHBOARD` n'est exploitable par aucun endpoint, car le modèle ne contient
+> aucune notion d'équipe (pas de lien manager → commerciaux). À trancher avec le module Objectifs.
+>
+> **Attention** : l'entité `Transaction` décrite plus bas existe en base, mais elle relève d'Atlantis SGI et
+> n'est alimentée par aucun endpoint d'écriture de cette application (voir section 7.2). Tant qu'Atlantis
+> n'est pas branché, les KPI de montants et de mandats resteront donc à zéro hors jeu de démonstration.
 
 ### 6.1. Objectif du module
 
@@ -241,8 +258,147 @@ L'équipe commerciale actuelle est petite (2 commerciaux + 1 responsable). Ils p
 
 ---
 
-## 7. Ce qui n'est PAS à faire maintenant
+## 7. Module actuel : Gestion du portefeuille commercial (clients et rendez-vous)
+
+### 7.1. Objectif du module
+
+Donner à l'équipe commerciale une interface pour gérer **son portefeuille de prospects et de clients** et
+**ses rendez-vous**. Ce sont des données dont l'application est la **seule source** : elles n'existent dans
+aucun autre système de l'entreprise.
+
+Ce module ne disparaîtra pas une fois Atlantis branché. Les prospects, les rendez-vous et les comptes rendus
+sont propres au travail commercial et resteront saisis ici.
+
+### 7.2. Frontière avec Atlantis SGI — à respecter absolument
+
+La base de clients de l'équipe commerciale et la base de clients de l'entreprise **ne sont pas la même
+chose** :
+
+- La **base commerciale** (celle de cette application) contient à la fois des **prospects** encore
+  démarchés et des **clients effectifs**. Chaque commercial y ajoute lui-même les personnes qu'il
+  prospecte.
+- La **base Atlantis** ne contient que les **clients effectifs**, ceux qui ont déjà souscrit à un service
+  de la structure, ainsi que **toutes leurs opérations**.
+
+La base commerciale est donc un **sur-ensemble** de la base Atlantis, et le champ `statut` du `Client`
+(`PROSPECT`, `CLIENT_ACTIF`, `CLIENT_INACTIF`) est exactement ce qui distingue les deux populations.
+
+Il en découle un partage des responsabilités strict :
+
+| Donnée | Qui en est responsable |
+|---|---|
+| Clients et prospects | L'équipe commerciale, dans cette application |
+| Rendez-vous, participants, comptes rendus | L'équipe commerciale, dans cette application |
+| **Transactions et opérations financières** | **Atlantis SGI, jamais cette application** |
+
+> **Règle non négociable** : l'application n'expose **aucune création, modification ou suppression de
+> transaction**, pour personne — pas même pour le responsable commercial, qui n'a aucun pouvoir sur les
+> opérations d'un client. Les transactions sont produites et gérées dans Atlantis. Une fois Atlantis pris en
+> main, on cherchera à exploiter une API permettant d'en **lire** la liste pour un client donné, en
+> consultation seule.
+
+L'entité `Transaction` du module 2 reste donc en place, mais elle n'est alimentée par **aucun endpoint
+d'écriture** : elle attend l'intégration Atlantis. Les transactions présentes dans `db/demo` sont un simple
+jeu d'essai de développement, pas une fonctionnalité.
+
+**Conséquence sur les KPI, à assumer** : tant qu'Atlantis n'est pas branché, les indicateurs de montants
+collectés et de mandats signés resteront à zéro. Seuls « nouveaux clients par commercial » et « activité
+terrain » seront réellement exploitables. Si l'entreprise a besoin des montants avant l'intégration, la
+réponse ne sera pas une saisie manuelle de transactions par les commerciaux, mais un **import** depuis le
+module Reporting d'Atlantis — à décider quand ses modalités d'accès seront connues.
+
+### 7.3. Règle d'accès retenue : chacun gère son périmètre
+
+- Un **commercial** crée et modifie les clients dont il est le référent, ainsi que les rendez-vous
+  rattachés à ces clients. Il ne voit ni ne modifie le portefeuille de ses collègues.
+- Le **responsable commercial** et la **direction** gèrent et corrigent pour toute l'équipe.
+- Ce cloisonnement est une **règle métier vérifiée dans la couche service**, en plus du contrôle de
+  permission fait par Spring Security. Une permission dit *ce qu'on a le droit de faire*, le cloisonnement
+  dit *sur quelles lignes* — les deux sont nécessaires et ne se remplacent pas.
+- Comme partout ailleurs dans le projet, le périmètre se déduit d'une **permission**, jamais d'un test sur
+  le nom du rôle (`if role == COMMERCIAL` est proscrit).
+
+### 7.4. Nouvelles permissions à créer (migration Flyway)
+
+```
+MANAGE_OWN_PORTFOLIO   — gérer ses propres clients/prospects et leurs rendez-vous
+MANAGE_ALL_PORTFOLIOS  — gérer ceux de tous les commerciaux
+DELETE_PORTFOLIO_DATA  — supprimer une saisie erronée (plutôt que la corriger)
+```
+
+Aucune permission d'écriture sur les transactions n'est créée, ni maintenant ni plus tard : voir 7.2.
+
+Attribution proposée : `COMMERCIAL` → `MANAGE_OWN_PORTFOLIO` ; `MANAGER_COMMERCIAL` et `DIRECTION` →
+`MANAGE_ALL_PORTFOLIOS` ; `ADMIN` → les trois.
+
+> **Attention** : le seed `V3` a donné toutes les permissions à `ADMIN` via un `CROSS JOIN` exécuté une
+> seule fois. Les permissions ajoutées maintenant **ne lui seront pas rattachées automatiquement** : la
+> nouvelle migration doit explicitement les insérer dans `role_permissions` pour `ADMIN`, sinon
+> l'administrateur se retrouvera sans droit de saisie.
+
+### 7.5. Endpoints attendus
+
+| Ressource | Endpoints |
+|---|---|
+| Clients | `GET /api/clients` (liste paginée, filtres : référent, statut, type, recherche par nom), `GET /{id}`, `POST`, `PUT /{id}`, `DELETE /{id}` |
+| Rendez-vous | `GET /api/rendez-vous` (filtres : client, période, participant), `GET /{id}`, `POST`, `PUT /{id}`, `DELETE /{id}` |
+
+**Aucun endpoint `/api/transactions` n'est à créer dans ce module**, pas même en lecture : la source
+n'existe pas encore. Il viendra avec l'intégration Atlantis, et en consultation seule.
+
+Les listes sont **paginées** (`Pageable`) : contrairement aux utilisateurs, ces tables grossiront
+continuellement et une liste complète deviendrait vite impraticable.
+
+### 7.6. Règles de validation à faire respecter
+
+- **Désignation** : une personne physique porte un `nom` et pas de `raisonSociale`, une personne morale
+  l'inverse. La contrainte `CK_clients_designation` existe déjà en base, mais l'API doit renvoyer une erreur
+  de validation lisible plutôt que laisser remonter une violation SQL.
+- **`dateAcquisition`** ne peut pas être dans le futur. Un **rendez-vous**, en revanche, peut être daté dans
+  le futur : l'équipe planifie ses visites.
+- **Participants** : au moins un participant par rendez-vous, sinon l'activité terrain n'est imputée à
+  personne.
+- **Changement de référent** : réservé à `MANAGE_ALL_PORTFOLIOS`. Réaffecter un client déplace ses clients
+  et ses montants d'un commercial à un autre dans les KPI — ce n'est pas une correction anodine.
+- **Suppression** : interdite sur un client qui porte des transactions, puisque celles-ci proviennent
+  d'Atlantis et que l'application n'a pas à faire disparaître un client effectif. Passer son `statut` à
+  `CLIENT_INACTIF` est la bonne réponse. La suppression reste possible sur un prospect sans historique et
+  sur un rendez-vous isolé, avec `DELETE_PORTFOLIO_DATA`.
+
+### 7.7. Traçabilité de la saisie
+
+Ajouter `created_by` et `updated_by` (clés étrangères vers `users`) sur `clients` et `rendez_vous`, via
+migration. Ces données étant saisies à la main et servant à évaluer les personnes qui les saisissent, il faut
+pouvoir répondre à « qui a enregistré ce client, et quand ». Ces colonnes sont renseignées à partir de
+l'utilisateur authentifié, jamais depuis le corps de la requête. La table `transactions` n'est pas concernée :
+l'application ne l'écrit pas.
+
+### 7.8. Points d'attention pour Claude Code
+
+- **Ne jamais exposer d'écriture sur les transactions**, quelle que soit la permission de l'appelant
+  (voir 7.2). C'est la contrainte la plus importante de ce module.
+- Aucun KPI n'est à recalculer ni à invalider après une saisie : ils sont calculés à la demande à partir des
+  tables. C'est précisément l'intérêt du choix fait au module 2.
+- Réutiliser les entités existantes du module 2 **sans les dupliquer** ni créer de nouvelles tables pour les
+  mêmes concepts.
+- Respecter les conventions en place : packages par fonctionnalité, DTO de requête/réponse séparés des
+  entités, migrations Flyway en T-SQL, `@PreAuthorize` sur permission.
+- Prévoir des tests sur le cloisonnement (un commercial ne peut pas modifier le client d'un collègue) et sur
+  les règles de validation — ce sont les endroits où une régression passerait inaperçue.
+- **Évolution anticipée, à ne pas construire maintenant** : quand un prospect devient client effectif, il
+  existe aussi dans Atlantis. Il faudra alors une référence vers son identifiant Atlantis sur `Client` pour
+  rapprocher les deux bases. Ce champ s'ajoutera par migration le moment venu, sans remettre en cause le
+  modèle.
+- **Frontend** : écrans sous `app/(commercial)/clients/` et `app/(commercial)/rendez-vous/`, avec les
+  actions masquées selon les permissions de l'utilisateur connecté, comme pour les écrans d'administration.
+  Aucun écran de saisie de transaction.
+
+---
+
+## 8. Ce qui n'est PAS à faire maintenant
 
 - Ne pas intégrer Atlantis SGI (en attente d'informations)
-- Ne pas construire les modules de saisie manuelle, objectifs ou dashboards (viendront après)
-- Rester concentré sur le modèle `Client` / `RendezVous` / `Transaction` comme fondation des KPI
+- **Ne créer aucun endpoint ni écran d'écriture sur les transactions** : elles appartiennent à Atlantis
+- Ne pas construire les modules Objectifs commerciaux ni les tableaux de bord (viendront après)
+- Ne pas modifier le modèle de données du module 2 : la gestion du portefeuille doit s'y adapter, pas l'inverse
+- Rester concentré sur les clients/prospects et les rendez-vous
