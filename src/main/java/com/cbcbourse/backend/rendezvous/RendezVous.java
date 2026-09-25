@@ -74,4 +74,11 @@ public class RendezVous {
     @JdbcTypeCode(SqlTypes.TIMESTAMP)
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
+
+    /** Auteurs de la saisie, renseignes a partir de l'utilisateur authentifie. */
+    @Column(name = "created_by")
+    private Long createdBy;
+
+    @Column(name = "updated_by")
+    private Long updatedBy;
 }

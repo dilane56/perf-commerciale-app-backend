@@ -77,6 +77,16 @@ public class Client {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    /**
+     * Auteurs de la saisie, renseignes a partir de l'utilisateur authentifie et jamais depuis le corps
+     * de la requete. Stockes en identifiant brut : on ne charge pas l'utilisateur pour tracer une saisie.
+     */
+    @Column(name = "created_by")
+    private Long createdBy;
+
+    @Column(name = "updated_by")
+    private Long updatedBy;
+
     /** Libelle d'affichage, quel que soit le type de client. */
     public String designation() {
         return type == TypeClient.PERSONNE_MORALE ? raisonSociale : nom;

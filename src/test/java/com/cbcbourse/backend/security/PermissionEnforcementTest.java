@@ -7,7 +7,11 @@ import java.util.List;
 import com.cbcbourse.backend.auth.JwtService;
 import com.cbcbourse.backend.auth.dto.AuthenticatedUser;
 import com.cbcbourse.backend.config.CorsProperties;
+import com.cbcbourse.backend.client.ClientController;
+import com.cbcbourse.backend.client.ClientService;
 import com.cbcbourse.backend.config.SecurityConfig;
+import com.cbcbourse.backend.rendezvous.RendezVousController;
+import com.cbcbourse.backend.rendezvous.RendezVousService;
 import com.cbcbourse.backend.kpi.KpiController;
 import com.cbcbourse.backend.kpi.KpiService;
 import com.cbcbourse.backend.kpi.dto.KpiCommercialResponse;
@@ -22,6 +26,8 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.Authentication;
@@ -32,7 +38,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -40,7 +48,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * du RBAC configurable retenu pour ce projet. Ces tests echouent si quelqu'un retire une annotation
  * {@code @PreAuthorize} ou se trompe de code de permission.
  */
-@WebMvcTest(controllers = {UserController.class, KpiController.class})
+@WebMvcTest(controllers = {UserController.class, KpiController.class, ClientController.class, RendezVousController.class})
 @Import({SecurityConfig.class, PermissionEnforcementTest.TestBeans.class})
 class PermissionEnforcementTest {
 
@@ -60,6 +68,12 @@ class PermissionEnforcementTest {
 
     @MockitoBean
     private KpiService kpiService;
+
+    @MockitoBean
+    private ClientService clientService;
+
+    @MockitoBean
+    private RendezVousService rendezVousService;
 
     /** Requis par le filtre JWT charge avec la configuration de securite. */
     @MockitoBean
@@ -137,6 +151,54 @@ class PermissionEnforcementTest {
                         .param("fin", "2026-12-31")
                         .with(authentication(authWith("VIEW_ALL_DASHBOARDS"))))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("Gerer son propre portefeuille donne acces a la liste des clients")
+    void listeClientsAvecPermission() throws Exception {
+        given(clientService.search(any(), any(), any(), any(), any())).willReturn(Page.empty());
+
+        mockMvc.perform(get("/api/clients").with(authentication(authWith("MANAGE_OWN_PORTFOLIO"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("Voir ses KPI ne donne pas acces au portefeuille")
+    void listeClientsSansPermission() throws Exception {
+        mockMvc.perform(get("/api/clients").with(authentication(authWith("VIEW_OWN_DASHBOARD"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Gerer son portefeuille ne suffit pas pour supprimer un client")
+    void suppressionClientSansPermissionDedieee() throws Exception {
+        mockMvc.perform(delete("/api/clients/1").with(authentication(authWith("MANAGE_OWN_PORTFOLIO"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("DELETE_PORTFOLIO_DATA autorise la suppression d'un client")
+    void suppressionClientAvecPermissionDediee() throws Exception {
+        mockMvc.perform(delete("/api/clients/1")
+                        .with(authentication(authWith("MANAGE_ALL_PORTFOLIOS", "DELETE_PORTFOLIO_DATA"))))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @DisplayName("Les rendez-vous exigent aussi une permission de portefeuille")
+    void listeRendezVousSansPermission() throws Exception {
+        mockMvc.perform(get("/api/rendez-vous").with(authentication(authWith("VIEW_ALL_DASHBOARDS"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Aucun endpoint d'ecriture n'existe sur les transactions : elles relevent d'Atlantis")
+    void aucuneEcritureSurLesTransactions() throws Exception {
+        mockMvc.perform(post("/api/transactions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}")
+                        .with(authentication(authWith("MANAGE_ALL_PORTFOLIOS", "DELETE_PORTFOLIO_DATA"))))
+                .andExpect(status().isNotFound());
     }
 
     private static KpiCommercialResponse unKpi() {

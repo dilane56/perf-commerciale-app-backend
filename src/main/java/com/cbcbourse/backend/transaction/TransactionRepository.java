@@ -9,6 +9,9 @@ import org.springframework.data.repository.query.Param;
 
 public interface TransactionRepository extends JpaRepository<Transaction, Long> {
 
+    /** Garde-fou de suppression : un client porteur de transactions ne doit pas disparaitre. */
+    boolean existsByClientId(Long clientId);
+
     /**
      * Montants collectes par un commercial : les transactions sont rattachees au client, et le client
      * a un referent unique. Le credit suit donc toujours le referent.

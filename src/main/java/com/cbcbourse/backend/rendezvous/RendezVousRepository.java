@@ -3,10 +3,12 @@ package com.cbcbourse.backend.rendezvous;
 import java.time.LocalDate;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-public interface RendezVousRepository extends JpaRepository<RendezVous, Long> {
+public interface RendezVousRepository extends JpaRepository<RendezVous, Long>,
+        JpaSpecificationExecutor<RendezVous> {
 
     /**
      * Activite terrain : compte les rendez-vous auxquels l'utilisateur a <b>participe</b>, qu'il soit
