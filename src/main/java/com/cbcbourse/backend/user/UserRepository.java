@@ -29,4 +29,7 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
     boolean existsByEmail(String email);
 
     boolean existsByRoles_Id(Long roleId);
+
+    /** Commerciaux rattaches a ce responsable : leur equipe, pour les objectifs et tableaux de bord. */
+    List<User> findByManagerId(Long managerId);
 }

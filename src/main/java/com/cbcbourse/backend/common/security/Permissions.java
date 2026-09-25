@@ -22,6 +22,13 @@ public final class Permissions {
     /** Supprimer une saisie erronee plutot que la corriger. */
     public static final String DELETE_PORTFOLIO_DATA = "DELETE_PORTFOLIO_DATA";
 
+    /**
+     * Fixer les objectifs de tous les commerciaux et de toutes les equipes. MANAGE_OBJECTIVES reste
+     * limite a sa propre equipe (verifie par {@link ObjectifAccess}) ; cette permission etend ce
+     * perimetre, sur le meme principe que MANAGE_ALL_PORTFOLIOS pour le portefeuille.
+     */
+    public static final String MANAGE_ALL_OBJECTIVES = "MANAGE_ALL_OBJECTIVES";
+
     private Permissions() {
     }
 }

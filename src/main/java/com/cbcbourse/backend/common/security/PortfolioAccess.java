@@ -1,11 +1,6 @@
 package com.cbcbourse.backend.common.security;
 
-import com.cbcbourse.backend.auth.dto.AuthenticatedUser;
-
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 /**
@@ -19,18 +14,20 @@ import org.springframework.stereotype.Component;
 @Component
 public class PortfolioAccess {
 
+    private final CurrentUser currentUser;
+
+    public PortfolioAccess(CurrentUser currentUser) {
+        this.currentUser = currentUser;
+    }
+
     /** Identifiant de l'utilisateur authentifie. */
     public Long currentUserId() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !(authentication.getPrincipal() instanceof AuthenticatedUser principal)) {
-            throw new AccessDeniedException("Aucun utilisateur authentifie");
-        }
-        return principal.id();
+        return currentUser.id();
     }
 
     /** Vrai si l'utilisateur peut agir sur le portefeuille de tous les commerciaux. */
     public boolean canManageAllPortfolios() {
-        return hasAuthority(Permissions.MANAGE_ALL_PORTFOLIOS);
+        return currentUser.hasAuthority(Permissions.MANAGE_ALL_PORTFOLIOS);
     }
 
     /**
@@ -61,15 +58,5 @@ public class PortfolioAccess {
             return currentUserId();
         }
         return demande != null ? demande : currentUserId();
-    }
-
-    private boolean hasAuthority(String code) {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null) {
-            return false;
-        }
-        return authentication.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .anyMatch(code::equals);
     }
 }

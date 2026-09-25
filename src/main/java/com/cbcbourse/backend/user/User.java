@@ -15,6 +15,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -57,6 +58,15 @@ public class User {
             inverseJoinColumns = @JoinColumn(name = "role_id")
     )
     private Set<Role> roles = new HashSet<>();
+
+    /**
+     * Responsable auquel ce commercial est rattache. Definit l'equipe pour les objectifs et tableaux
+     * de bord d'equipe ; recupere avec l'utilisateur (comme les roles) car c'est une petite table
+     * consultee constamment, jamais paginee sur un grand volume.
+     */
+    @ManyToOne
+    @JoinColumn(name = "manager_id")
+    private User manager;
 
     @CreationTimestamp
     @JdbcTypeCode(SqlTypes.TIMESTAMP)

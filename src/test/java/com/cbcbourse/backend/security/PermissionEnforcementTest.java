@@ -16,6 +16,9 @@ import com.cbcbourse.backend.kpi.KpiController;
 import com.cbcbourse.backend.kpi.KpiService;
 import com.cbcbourse.backend.kpi.dto.KpiCommercialResponse;
 import com.cbcbourse.backend.kpi.dto.KpiPeriodeResponse;
+import com.cbcbourse.backend.objectif.ObjectifController;
+import com.cbcbourse.backend.objectif.ObjectifService;
+import com.cbcbourse.backend.objectif.dto.ObjectifsEquipeResponse;
 import com.cbcbourse.backend.user.UserController;
 import com.cbcbourse.backend.user.UserService;
 
@@ -48,7 +51,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * du RBAC configurable retenu pour ce projet. Ces tests echouent si quelqu'un retire une annotation
  * {@code @PreAuthorize} ou se trompe de code de permission.
  */
-@WebMvcTest(controllers = {UserController.class, KpiController.class, ClientController.class, RendezVousController.class})
+@WebMvcTest(controllers = {UserController.class, KpiController.class, ClientController.class,
+        RendezVousController.class, ObjectifController.class})
 @Import({SecurityConfig.class, PermissionEnforcementTest.TestBeans.class})
 class PermissionEnforcementTest {
 
@@ -74,6 +78,9 @@ class PermissionEnforcementTest {
 
     @MockitoBean
     private RendezVousService rendezVousService;
+
+    @MockitoBean
+    private ObjectifService objectifService;
 
     /** Requis par le filtre JWT charge avec la configuration de securite. */
     @MockitoBean
@@ -199,6 +206,65 @@ class PermissionEnforcementTest {
                         .content("{}")
                         .with(authentication(authWith("MANAGE_ALL_PORTFOLIOS", "DELETE_PORTFOLIO_DATA"))))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("VIEW_OWN_DASHBOARD donne acces a ses propres objectifs")
+    void mesObjectifsAvecPermission() throws Exception {
+        given(objectifService.objectifsDuCommercial(anyLong())).willReturn(List.of());
+
+        mockMvc.perform(get("/api/objectifs/me").with(authentication(authWith("VIEW_OWN_DASHBOARD"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("Sans VIEW_OWN_DASHBOARD, ses propres objectifs sont refuses")
+    void mesObjectifsSansPermission() throws Exception {
+        mockMvc.perform(get("/api/objectifs/me").with(authentication(authWith("MANAGE_OBJECTIVES"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("VIEW_TEAM_DASHBOARD donne acces aux objectifs de son equipe")
+    void objectifsEquipeAvecPermission() throws Exception {
+        given(objectifService.objectifsEquipe(anyLong())).willReturn(new ObjectifsEquipeResponse(List.of(), List.of()));
+
+        mockMvc.perform(get("/api/objectifs/equipe").with(authentication(authWith("VIEW_TEAM_DASHBOARD"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("Voir ses propres objectifs ne suffit pas pour en fixer un nouveau")
+    void creationObjectifSansPermission() throws Exception {
+        mockMvc.perform(post("/api/objectifs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectifRequestJson())
+                        .with(authentication(authWith("VIEW_OWN_DASHBOARD"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("MANAGE_OBJECTIVES autorise a fixer un objectif")
+    void creationObjectifAvecPermission() throws Exception {
+        given(objectifService.create(any())).willReturn(null);
+
+        mockMvc.perform(post("/api/objectifs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectifRequestJson())
+                        .with(authentication(authWith("MANAGE_OBJECTIVES"))))
+                .andExpect(status().isCreated());
+    }
+
+    private static String objectifRequestJson() {
+        return """
+                {
+                    "type": "NOUVEAUX_CLIENTS",
+                    "commercialId": 2,
+                    "valeurCible": 10,
+                    "dateDebut": "2026-01-01",
+                    "dateFin": "2026-03-31"
+                }
+                """;
     }
 
     private static KpiCommercialResponse unKpi() {

@@ -24,6 +24,9 @@ public record CreateUserRequest(
         @Size(min = 8, message = "Le mot de passe doit contenir au moins 8 caracteres") String password,
 
         @Schema(description = "Identifiants des roles a assigner (au moins un)", example = "[1]")
-        @NotEmpty(message = "Au moins un role doit etre assigne") Set<Long> roleIds
+        @NotEmpty(message = "Au moins un role doit etre assigne") Set<Long> roleIds,
+
+        @Schema(description = "Responsable auquel ce commercial est rattache (definit son equipe). "
+                + "Laisser vide pour un responsable ou un compte sans equipe.", example = "3") Long managerId
 ) {
 }

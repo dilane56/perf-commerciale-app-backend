@@ -4,6 +4,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import com.cbcbourse.backend.common.exception.BusinessRuleException;
 import com.cbcbourse.backend.common.exception.DuplicateResourceException;
 import com.cbcbourse.backend.common.exception.ResourceNotFoundException;
 import com.cbcbourse.backend.role.Role;
@@ -59,6 +60,7 @@ public class UserService {
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         user.setActive(true);
         user.setRoles(resolveRoles(request.roleIds()));
+        user.setManager(resolveManager(null, request.managerId()));
         return userRepository.save(user);
     }
 
@@ -71,6 +73,7 @@ public class UserService {
         user.setLastName(request.lastName());
         user.setEmail(request.email());
         user.setRoles(resolveRoles(request.roleIds()));
+        user.setManager(resolveManager(id, request.managerId()));
         return userRepository.save(user);
     }
 
@@ -84,6 +87,18 @@ public class UserService {
         User user = findById(id);
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         userRepository.save(user);
+    }
+
+    /** Un utilisateur ne peut pas etre son propre responsable ; managerId nul signifie "sans equipe". */
+    private User resolveManager(Long userId, Long managerId) {
+        if (managerId == null) {
+            return null;
+        }
+        if (managerId.equals(userId)) {
+            throw new BusinessRuleException("Un utilisateur ne peut pas etre son propre responsable");
+        }
+        return userRepository.findById(managerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Responsable introuvable: " + managerId));
     }
 
     private Set<Role> resolveRoles(Set<Long> roleIds) {
