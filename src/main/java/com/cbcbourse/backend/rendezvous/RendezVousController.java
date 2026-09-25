@@ -1,6 +1,7 @@
 package com.cbcbourse.backend.rendezvous;
 
 import java.time.LocalDate;
+import java.util.function.Function;
 
 import com.cbcbourse.backend.common.dto.PageResponse;
 import com.cbcbourse.backend.common.exception.ApiError;
@@ -68,7 +69,7 @@ public class RendezVousController {
             @PageableDefault(size = 20, sort = "date") Pageable pageable) {
         return PageResponse.from(
                 rendezVousService.search(clientId, participantId, debut, fin, pageable),
-                RendezVousResponse::from);
+                Function.identity());
     }
 
     @Operation(summary = "Consulter un rendez-vous")
@@ -76,7 +77,7 @@ public class RendezVousController {
             content = @Content(schema = @Schema(implementation = ApiError.class)))
     @GetMapping("/{id}")
     public RendezVousResponse getRendezVous(@PathVariable Long id) {
-        return RendezVousResponse.from(rendezVousService.findById(id));
+        return rendezVousService.findById(id);
     }
 
     @Operation(summary = "Programmer un rendez-vous", description = "La date peut etre dans le futur : "
@@ -86,15 +87,15 @@ public class RendezVousController {
     @PostMapping
     public ResponseEntity<RendezVousResponse> createRendezVous(
             @Valid @RequestBody CreateRendezVousRequest request) {
-        RendezVous rendezVous = rendezVousService.create(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(RendezVousResponse.from(rendezVous));
+        RendezVousResponse created = rendezVousService.create(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
     @Operation(summary = "Modifier un rendez-vous ou son compte rendu")
     @PutMapping("/{id}")
     public RendezVousResponse updateRendezVous(@PathVariable Long id,
                                                @Valid @RequestBody UpdateRendezVousRequest request) {
-        return RendezVousResponse.from(rendezVousService.update(id, request));
+        return rendezVousService.update(id, request);
     }
 
     @Operation(summary = "Supprimer un rendez-vous")

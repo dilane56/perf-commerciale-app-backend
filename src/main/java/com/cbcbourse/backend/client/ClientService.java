@@ -2,6 +2,7 @@ package com.cbcbourse.backend.client;
 
 import java.time.LocalDate;
 
+import com.cbcbourse.backend.client.dto.ClientResponse;
 import com.cbcbourse.backend.client.dto.CreateClientRequest;
 import com.cbcbourse.backend.client.dto.UpdateClientRequest;
 import com.cbcbourse.backend.common.exception.BusinessRuleException;
@@ -43,8 +44,8 @@ public class ClientService {
     }
 
     @Transactional(readOnly = true)
-    public Page<Client> search(Long referentId, StatutClient statut, TypeClient type, String recherche,
-                               Pageable pageable) {
+    public Page<ClientResponse> search(Long referentId, StatutClient statut, TypeClient type, String recherche,
+                                       Pageable pageable) {
         Specification<Client> spec = Specification.unrestricted();
 
         if (referentId != null) {
@@ -67,18 +68,18 @@ public class ClientService {
             spec = spec.and(ClientSpecifications.designationContient(recherche.trim()));
         }
 
-        return clientRepository.findAll(spec, pageable);
+        // Construit le DTO ici, encore a l'interieur de la transaction : le referent est charge en
+        // LAZY, et open-in-view etant desactive, y toucher depuis le controleur leverait une
+        // LazyInitializationException une fois la session fermee.
+        return clientRepository.findAll(spec, pageable).map(ClientResponse::from);
     }
 
     @Transactional(readOnly = true)
-    public Client findById(Long id) {
-        Client client = clientRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Client introuvable: " + id));
-        portfolioAccess.checkCanActOnPortfolioOf(client.getCommercialReferent().getId());
-        return client;
+    public ClientResponse findById(Long id) {
+        return ClientResponse.from(getEntity(id));
     }
 
-    public Client create(CreateClientRequest request) {
+    public ClientResponse create(CreateClientRequest request) {
         Long referentId = portfolioAccess.resolveReferentId(request.commercialReferentId());
 
         Client client = new Client();
@@ -91,11 +92,11 @@ public class ClientService {
 
         client.setCreatedBy(portfolioAccess.currentUserId());
         client.setUpdatedBy(portfolioAccess.currentUserId());
-        return clientRepository.save(client);
+        return ClientResponse.from(clientRepository.save(client));
     }
 
-    public Client update(Long id, UpdateClientRequest request) {
-        Client client = findById(id);
+    public ClientResponse update(Long id, UpdateClientRequest request) {
+        Client client = getEntity(id);
 
         if (request.commercialReferentId() != null
                 && !request.commercialReferentId().equals(client.getCommercialReferent().getId())) {
@@ -112,11 +113,11 @@ public class ClientService {
         verifierDateAcquisition(request.dateAcquisition());
 
         client.setUpdatedBy(portfolioAccess.currentUserId());
-        return clientRepository.save(client);
+        return ClientResponse.from(clientRepository.save(client));
     }
 
     public void delete(Long id) {
-        Client client = findById(id);
+        Client client = getEntity(id);
         if (transactionRepository.existsByClientId(id)) {
             // Les transactions viennent d'Atlantis : cette application n'a pas a faire disparaitre
             // un client effectif. Le passer en CLIENT_INACTIF est la bonne reponse.
@@ -124,6 +125,14 @@ public class ClientService {
                     + "Passez son statut a CLIENT_INACTIF.");
         }
         clientRepository.delete(client);
+    }
+
+    /** Reservee a l'usage interne : renvoie l'entite, pas le DTO, pour que create/update puissent la muter. */
+    private Client getEntity(Long id) {
+        Client client = clientRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Client introuvable: " + id));
+        portfolioAccess.checkCanActOnPortfolioOf(client.getCommercialReferent().getId());
+        return client;
     }
 
     private User loadReferent(Long referentId) {

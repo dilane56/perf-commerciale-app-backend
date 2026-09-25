@@ -6,14 +6,17 @@ import java.util.List;
 import java.util.Set;
 
 import com.cbcbourse.backend.auth.dto.AuthenticatedUser;
+import com.cbcbourse.backend.client.dto.ClientResponse;
 import com.cbcbourse.backend.client.dto.CreateClientRequest;
 import com.cbcbourse.backend.client.dto.UpdateClientRequest;
 import com.cbcbourse.backend.common.exception.BusinessRuleException;
 import com.cbcbourse.backend.common.security.Permissions;
 import com.cbcbourse.backend.permission.Permission;
+import com.cbcbourse.backend.rendezvous.RendezVousRepository;
 import com.cbcbourse.backend.rendezvous.RendezVousService;
 import com.cbcbourse.backend.rendezvous.TypeRendezVous;
 import com.cbcbourse.backend.rendezvous.dto.CreateRendezVousRequest;
+import com.cbcbourse.backend.rendezvous.dto.RendezVousResponse;
 import com.cbcbourse.backend.role.Role;
 import com.cbcbourse.backend.transaction.SourceSysteme;
 import com.cbcbourse.backend.transaction.Transaction;
@@ -56,7 +59,13 @@ class PortfolioScopeTest {
     private ClientService clientService;
 
     @Autowired
+    private ClientRepository clientRepository;
+
+    @Autowired
     private RendezVousService rendezVousService;
+
+    @Autowired
+    private RendezVousRepository rendezVousRepository;
 
     private User awa;
     private User moussa;
@@ -94,7 +103,7 @@ class PortfolioScopeTest {
 
         var page = clientService.search(null, null, null, null, PageRequest.of(0, 20));
 
-        assertThat(page.getContent()).extracting(Client::getId).containsExactly(clientDAwa.getId());
+        assertThat(page.getContent()).extracting(ClientResponse::id).containsExactly(clientDAwa.getId());
     }
 
     @Test
@@ -133,13 +142,15 @@ class PortfolioScopeTest {
     void creationForceLeReferentEtTraceLAuteur() {
         authentifier(awa, Permissions.MANAGE_OWN_PORTFOLIO);
 
-        Client cree = clientService.create(new CreateClientRequest(TypeClient.PERSONNE_MORALE, null,
+        ClientResponse cree = clientService.create(new CreateClientRequest(TypeClient.PERSONNE_MORALE, null,
                 "SODIMA SA", null, LocalDate.now(), StatutClient.PROSPECT));
 
-        assertThat(cree.getCommercialReferent().getId()).isEqualTo(awa.getId());
-        assertThat(cree.getCreatedBy()).isEqualTo(awa.getId());
-        assertThat(cree.getNom()).isNull();
+        assertThat(cree.commercialReferentId()).isEqualTo(awa.getId());
+        assertThat(cree.nom()).isNull();
         assertThat(cree.designation()).isEqualTo("SODIMA SA");
+
+        Client persiste = clientRepository.findById(cree.id()).orElseThrow();
+        assertThat(persiste.getCreatedBy()).isEqualTo(awa.getId());
     }
 
     @Test
@@ -150,11 +161,11 @@ class PortfolioScopeTest {
         var page = clientService.search(null, null, null, null, PageRequest.of(0, 20));
         assertThat(page.getContent()).hasSize(2);
 
-        Client reaffecte = clientService.update(clientDeMoussa.getId(),
+        ClientResponse reaffecte = clientService.update(clientDeMoussa.getId(),
                 new UpdateClientRequest(TypeClient.PERSONNE_PHYSIQUE, "Jean Ouedraogo", null, awa.getId(),
                         LocalDate.of(2026, 3, 1), StatutClient.CLIENT_ACTIF));
 
-        assertThat(reaffecte.getCommercialReferent().getId()).isEqualTo(awa.getId());
+        assertThat(reaffecte.commercialReferentId()).isEqualTo(awa.getId());
     }
 
     @Test
@@ -212,13 +223,15 @@ class PortfolioScopeTest {
     void rendezVousPlanifieEnBinome() {
         authentifier(awa, Permissions.MANAGE_OWN_PORTFOLIO);
 
-        var cree = rendezVousService.create(new CreateRendezVousRequest(clientDAwa.getId(),
+        RendezVousResponse cree = rendezVousService.create(new CreateRendezVousRequest(clientDAwa.getId(),
                 LocalDate.now().plusDays(10), TypeRendezVous.PROSPECTION, "Prospection en binome",
                 Set.of(awa.getId(), fatou.getId())));
 
-        assertThat(cree.getParticipants()).extracting(User::getId)
+        assertThat(cree.participants()).extracting(RendezVousResponse.ParticipantResponse::id)
                 .containsExactlyInAnyOrder(awa.getId(), fatou.getId());
-        assertThat(cree.getCreatedBy()).isEqualTo(awa.getId());
+
+        var persiste = rendezVousRepository.findById(cree.id()).orElseThrow();
+        assertThat(persiste.getCreatedBy()).isEqualTo(awa.getId());
     }
 
     @Test

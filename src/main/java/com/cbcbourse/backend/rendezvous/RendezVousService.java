@@ -11,6 +11,7 @@ import com.cbcbourse.backend.common.exception.BusinessRuleException;
 import com.cbcbourse.backend.common.exception.ResourceNotFoundException;
 import com.cbcbourse.backend.common.security.PortfolioAccess;
 import com.cbcbourse.backend.rendezvous.dto.CreateRendezVousRequest;
+import com.cbcbourse.backend.rendezvous.dto.RendezVousResponse;
 import com.cbcbourse.backend.rendezvous.dto.UpdateRendezVousRequest;
 import com.cbcbourse.backend.user.User;
 import com.cbcbourse.backend.user.UserRepository;
@@ -46,8 +47,8 @@ public class RendezVousService {
     }
 
     @Transactional(readOnly = true)
-    public Page<RendezVous> search(Long clientId, Long participantId, LocalDate debut, LocalDate fin,
-                                   Pageable pageable) {
+    public Page<RendezVousResponse> search(Long clientId, Long participantId, LocalDate debut, LocalDate fin,
+                                           Pageable pageable) {
         Specification<RendezVous> spec = Specification.unrestricted();
 
         if (!portfolioAccess.canManageAllPortfolios()) {
@@ -67,18 +68,18 @@ public class RendezVousService {
             spec = spec.and(RendezVousSpecifications.jusquAu(fin));
         }
 
-        return rendezVousRepository.findAll(spec, pageable);
+        // Construit le DTO ici, encore a l'interieur de la transaction : le client et les participants
+        // sont charges paresseusement, et open-in-view etant desactive, y toucher depuis le controleur
+        // leverait une LazyInitializationException une fois la session fermee.
+        return rendezVousRepository.findAll(spec, pageable).map(RendezVousResponse::from);
     }
 
     @Transactional(readOnly = true)
-    public RendezVous findById(Long id) {
-        RendezVous rendezVous = rendezVousRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Rendez-vous introuvable: " + id));
-        portfolioAccess.checkCanActOnPortfolioOf(rendezVous.getClient().getCommercialReferent().getId());
-        return rendezVous;
+    public RendezVousResponse findById(Long id) {
+        return RendezVousResponse.from(getEntity(id));
     }
 
-    public RendezVous create(CreateRendezVousRequest request) {
+    public RendezVousResponse create(CreateRendezVousRequest request) {
         RendezVous rendezVous = new RendezVous();
         rendezVous.setClient(loadClientDansPerimetre(request.clientId()));
         rendezVous.setDate(request.date());
@@ -88,11 +89,11 @@ public class RendezVousService {
 
         rendezVous.setCreatedBy(portfolioAccess.currentUserId());
         rendezVous.setUpdatedBy(portfolioAccess.currentUserId());
-        return rendezVousRepository.save(rendezVous);
+        return RendezVousResponse.from(rendezVousRepository.save(rendezVous));
     }
 
-    public RendezVous update(Long id, UpdateRendezVousRequest request) {
-        RendezVous rendezVous = findById(id);
+    public RendezVousResponse update(Long id, UpdateRendezVousRequest request) {
+        RendezVous rendezVous = getEntity(id);
 
         // Deplacer un rendez-vous vers un autre client exige aussi d'avoir acces au client d'arrivee.
         rendezVous.setClient(loadClientDansPerimetre(request.clientId()));
@@ -102,11 +103,19 @@ public class RendezVousService {
         rendezVous.setParticipants(loadParticipants(request.participantIds()));
 
         rendezVous.setUpdatedBy(portfolioAccess.currentUserId());
-        return rendezVousRepository.save(rendezVous);
+        return RendezVousResponse.from(rendezVousRepository.save(rendezVous));
     }
 
     public void delete(Long id) {
-        rendezVousRepository.delete(findById(id));
+        rendezVousRepository.delete(getEntity(id));
+    }
+
+    /** Reservee a l'usage interne : renvoie l'entite, pas le DTO, pour que create/update puissent la muter. */
+    private RendezVous getEntity(Long id) {
+        RendezVous rendezVous = rendezVousRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Rendez-vous introuvable: " + id));
+        portfolioAccess.checkCanActOnPortfolioOf(rendezVous.getClient().getCommercialReferent().getId());
+        return rendezVous;
     }
 
     private Client loadClientDansPerimetre(Long clientId) {

@@ -1,5 +1,7 @@
 package com.cbcbourse.backend.client;
 
+import java.util.function.Function;
+
 import com.cbcbourse.backend.client.dto.ClientResponse;
 import com.cbcbourse.backend.client.dto.CreateClientRequest;
 import com.cbcbourse.backend.client.dto.UpdateClientRequest;
@@ -64,7 +66,7 @@ public class ClientController {
             @RequestParam(required = false) String recherche,
             @PageableDefault(size = 20, sort = "dateAcquisition") Pageable pageable) {
         return PageResponse.from(clientService.search(referentId, statut, type, recherche, pageable),
-                ClientResponse::from);
+                Function.identity());
     }
 
     @Operation(summary = "Consulter un client")
@@ -72,7 +74,7 @@ public class ClientController {
             content = @Content(schema = @Schema(implementation = ApiError.class)))
     @GetMapping("/{id}")
     public ClientResponse getClient(@PathVariable Long id) {
-        return ClientResponse.from(clientService.findById(id));
+        return clientService.findById(id);
     }
 
     @Operation(summary = "Creer un client ou un prospect", description = "Un commercial cree toujours pour "
@@ -81,14 +83,14 @@ public class ClientController {
             content = @Content(schema = @Schema(implementation = ApiError.class)))
     @PostMapping
     public ResponseEntity<ClientResponse> createClient(@Valid @RequestBody CreateClientRequest request) {
-        Client client = clientService.create(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(ClientResponse.from(client));
+        ClientResponse created = clientService.create(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
     @Operation(summary = "Modifier un client")
     @PutMapping("/{id}")
     public ClientResponse updateClient(@PathVariable Long id, @Valid @RequestBody UpdateClientRequest request) {
-        return ClientResponse.from(clientService.update(id, request));
+        return clientService.update(id, request);
     }
 
     @Operation(summary = "Supprimer un client", description = "Refuse si le client porte des transactions : "
