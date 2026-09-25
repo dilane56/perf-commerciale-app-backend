@@ -25,12 +25,17 @@ Construire une application permettant au **service commercial** de l'entreprise 
 
 1. ✅ **Terminé : Utilisateurs, Rôles & Permissions**
 2. ✅ **Terminé : Modèle de données KPI générique** (entités d'événements bruts + endpoints de lecture des KPI)
-3. 🔄 **Module en cours : Gestion du portefeuille commercial** (clients/prospects et rendez-vous) — objet de ce document
-4. Module Objectifs commerciaux (fixation + suivi du taux d'atteinte)
+3. ✅ **Terminé : Gestion du portefeuille commercial** (clients/prospects et rendez-vous)
+4. ✅ **Terminé : Objectifs commerciaux** (fixation + suivi du taux d'atteinte) — objet de ce document
 5. Tableaux de bord (vue individuelle / vue managériale)
 6. Intégration Atlantis SGI (une fois les modalités d'accès connues)
 
-Ce fichier se concentre sur le **point 3**. Les points 1 et 2 sont déjà implémentés — ne pas les reconstruire. Les sections 5 et 6 décrivent ce qui existe déjà et restent dans ce fichier à titre de référence : le module en cours écrit dans les entités `Client` et `RendezVous` (section 6) et s'appuie sur les permissions du RBAC (section 5). L'entité `Transaction` relève d'Atlantis SGI et n'est écrite par aucun module de cette application (voir section 7.2).
+Ce fichier se concentre sur le **point 4**. Les points 1 à 3 sont déjà implémentés — ne pas les reconstruire.
+Les sections 5, 6 et 7 décrivent ce qui existe déjà et restent dans ce fichier à titre de référence : le
+module Objectifs (section 8) s'appuie sur les permissions du RBAC (section 5), sur le lien manager →
+commerciaux qu'il introduit lui-même sur `User` (section 8.2), et calcule ses valeurs réelles à partir des
+mêmes KPI que le module 2 (section 6), sans dupliquer ce calcul. L'entité `Transaction` relève d'Atlantis SGI
+et n'est écrite par aucun module de cette application (voir section 7.2).
 
 ---
 
@@ -185,8 +190,11 @@ app/
 > `/api/kpi/commerciaux` et `/api/kpi/commerciaux/{userId}`, protégés respectivement par `VIEW_OWN_DASHBOARD`
 > et `VIEW_ALL_DASHBOARDS`. Un jeu de démonstration est chargé par le seul profil `dev` (`db/demo`).
 >
-> **Limite connue** : `VIEW_TEAM_DASHBOARD` n'est exploitable par aucun endpoint, car le modèle ne contient
-> aucune notion d'équipe (pas de lien manager → commerciaux). À trancher avec le module Objectifs.
+> **Limite levée par le module 4** : `VIEW_TEAM_DASHBOARD` restait inexploitable faute de notion d'équipe.
+> Le module Objectifs (section 8) a ajouté `manager_id` sur `User` : l'équipe d'un responsable est
+> l'ensemble des commerciaux dont `managerId` le désigne. Cela reste toutefois inexploité par le module KPI
+> lui-même — aucun endpoint `/api/kpi/equipe` n'existe encore, cela viendra avec les tableaux de bord
+> (module 5).
 >
 > **Attention** : l'entité `Transaction` décrite plus bas existe en base, mais elle relève d'Atlantis SGI et
 > n'est alimentée par aucun endpoint d'écriture de cette application (voir section 7.2). Tant qu'Atlantis
@@ -258,7 +266,12 @@ L'équipe commerciale actuelle est petite (2 commerciaux + 1 responsable). Ils p
 
 ---
 
-## 7. Module actuel : Gestion du portefeuille commercial (clients et rendez-vous)
+## 7. Module livré (référence) : Gestion du portefeuille commercial (clients et rendez-vous)
+
+> **État** : livré. CRUD paginé sur `/api/clients` et `/api/rendez-vous`, cloisonnement par référent
+> appliqué en couche service (`PortfolioAccess`) en plus de `@PreAuthorize`, permissions
+> `MANAGE_OWN_PORTFOLIO` / `MANAGE_ALL_PORTFOLIOS` / `DELETE_PORTFOLIO_DATA` (migration `V6`), traçabilité
+> `created_by`/`updated_by` (migration `V7`). Aucun endpoint d'écriture sur les transactions.
 
 ### 7.1. Objectif du module
 
@@ -395,10 +408,93 @@ l'application ne l'écrit pas.
 
 ---
 
-## 8. Ce qui n'est PAS à faire maintenant
+## 8. Module livré (référence) : Objectifs commerciaux
+
+> **État** : livré. Objectifs individuels ou d'équipe sur `/api/objectifs`, avec taux d'atteinte recalculé
+> à la demande via `KpiService` (jamais stocké). Introduit `manager_id` sur `User` (migration `V8`) et la
+> table `objectifs` (migration `V9`), ainsi que la permission `MANAGE_ALL_OBJECTIVES` (migration `V10`).
+
+### 8.1. Objectif du module
+
+Permettre à un responsable ou à la direction de **fixer une cible** sur l'une des métriques déjà calculées
+par le module KPI (nouveaux clients, montant collecté, mandats signés, activité terrain), sur une période
+donnée, pour un commercial ou pour toute une équipe — puis de suivre le **taux d'atteinte** de cette cible.
+Comme pour les KPI, la valeur réelle et le taux d'atteinte ne sont jamais stockés : ils sont recalculés à
+chaque lecture à partir des mêmes tables (`clients`, `transactions`, `rendez_vous_participants`), pour ne
+jamais avoir deux façons de compter la même chose.
+
+### 8.2. Lien manager → équipe (nouveau sur `User`)
+
+Le module KPI (section 6) avait signalé que `VIEW_TEAM_DASHBOARD` était inexploitable faute de notion
+d'équipe dans le modèle. Ce module tranche la question : `User` reçoit un champ `managerId` (FK vers
+`User`, nullable). L'équipe d'un responsable est l'ensemble des commerciaux dont `managerId` le désigne.
+Un utilisateur sans responsable assigné (`managerId` nul) n'appartient à l'équipe de personne : seule la
+direction (`MANAGE_ALL_OBJECTIVES`) peut alors agir pour lui.
+
+### 8.3. Modèle de données
+
+**Entité `Objectif`**
+- `id`
+- `type` (`NOUVEAUX_CLIENTS`, `MONTANT_COLLECTE`, `MANDATS_SIGNES`, `ACTIVITE_TERRAIN`) — une métrique
+  parmi celles déjà calculées par le module KPI, jamais une mesure inédite
+- `commercialId` (FK vers `User`, nullable) — renseigné pour un objectif **individuel**
+- `managerId` (FK vers `User`, nullable) — renseigné pour un objectif **d'équipe** ; c'est une cible
+  propre que le responsable fixe pour son équipe, **pas** la somme des objectifs individuels de ses
+  commerciaux : les deux existent indépendamment l'un de l'autre
+- Exactement un des deux titulaires est renseigné (contrainte `CK_objectifs_titulaire`, revalidée côté
+  service avec un message lisible)
+- `valeurCible` (`DECIMAL(18,2)`, strictement positive)
+- `dateDebut`, `dateFin` (période libre, propre à chaque objectif ; `dateFin >= dateDebut`)
+- `createdBy`, `updatedBy`, `createdAt`, `updatedAt`
+
+### 8.4. Règle d'accès : cloisonnement par équipe
+
+- `MANAGE_OBJECTIVES` (déjà seedée au module 1) autorise à fixer des objectifs, mais **seulement pour sa
+  propre équipe** : un objectif individuel doit viser un commercial dont `managerId` est l'appelant, un
+  objectif d'équipe doit viser l'équipe de l'appelant lui-même.
+- `MANAGE_ALL_OBJECTIVES` (nouvelle permission) étend ce périmètre à tous les commerciaux et équipes,
+  sur le même principe que `MANAGE_ALL_PORTFOLIOS` pour le portefeuille. Attribuée à `ADMIN` et
+  `DIRECTION`.
+- Ce cloisonnement est vérifié en couche service (`ObjectifAccess`), y compris lors d'une **modification** :
+  l'accès est revérifié sur l'affectation *actuelle* de l'objectif avant d'appliquer la nouvelle, pour
+  qu'un responsable ne puisse pas s'approprier l'objectif d'une autre équipe en le réaffectant à la sienne.
+- Comme partout ailleurs, le périmètre se déduit d'une **permission**, jamais d'un nom de rôle.
+
+### 8.5. Endpoints livrés
+
+| Endpoint | Permission | Description |
+|---|---|---|
+| `GET /api/objectifs/me` | `VIEW_OWN_DASHBOARD` | Objectifs individuels de l'utilisateur connecté |
+| `GET /api/objectifs/equipe` | `VIEW_TEAM_DASHBOARD` | Objectif(s) d'équipe du responsable connecté + objectifs individuels de ses commerciaux |
+| `GET /api/objectifs` | `VIEW_ALL_DASHBOARDS` | Vue consolidée paginée (filtres : commercial, équipe, type) |
+| `POST /api/objectifs` | `MANAGE_OBJECTIVES` ou `MANAGE_ALL_OBJECTIVES` | Fixer un objectif |
+| `PUT /api/objectifs/{id}` | `MANAGE_OBJECTIVES` ou `MANAGE_ALL_OBJECTIVES` | Modifier un objectif |
+| `DELETE /api/objectifs/{id}` | `MANAGE_OBJECTIVES` ou `MANAGE_ALL_OBJECTIVES` | Supprimer un objectif |
+
+### 8.6. Points d'attention pour Claude Code
+
+- La valeur réelle et le taux d'atteinte ne sont calculés qu'au moment de la lecture, via `KpiService`
+  (méthode `forUser`) — ne jamais les stocker sur l'entité `Objectif`, ni les invalider/recalculer après
+  une saisie sur `clients`, `transactions` ou `rendez_vous`.
+- Un objectif d'équipe agrège les valeurs individuelles de ses membres (`findByManagerId`), mais reste une
+  cible **propre** : ne pas en déduire automatiquement un objectif d'équipe à partir des objectifs
+  individuels, ni l'inverse.
+- `CurrentUser` (dans `common/security`) centralise l'accès à l'utilisateur authentifié et à ses
+  autorités ; `PortfolioAccess` et `ObjectifAccess` s'appuient dessus plutôt que de dupliquer cette
+  logique — réutiliser ce composant pour tout futur cloisonnement de ce type.
+- **Frontend** : écrans sous `app/(commercial)/objectifs/`, avec un formulaire de fixation qui bascule
+  entre « pour un commercial » et « pour une équipe » plutôt que d'exposer les deux champs en même temps.
+  Le taux d'atteinte doit être visible à la fois sur la vue individuelle et sur la vue d'équipe.
+- **Évolution anticipée, à ne pas construire maintenant** : `VIEW_TEAM_DASHBOARD` a maintenant une base
+  exploitable (`managerId`), mais aucun endpoint `/api/kpi/equipe` n'existe encore — ce sera au module 5
+  (Tableaux de bord) de l'ajouter.
+
+---
+
+## 9. Ce qui n'est PAS à faire maintenant
 
 - Ne pas intégrer Atlantis SGI (en attente d'informations)
 - **Ne créer aucun endpoint ni écran d'écriture sur les transactions** : elles appartiennent à Atlantis
-- Ne pas construire les modules Objectifs commerciaux ni les tableaux de bord (viendront après)
-- Ne pas modifier le modèle de données du module 2 : la gestion du portefeuille doit s'y adapter, pas l'inverse
-- Rester concentré sur les clients/prospects et les rendez-vous
+- Ne pas construire les tableaux de bord ni l'endpoint `/api/kpi/equipe` (module 5, après ce document)
+- Ne pas modifier le modèle de données des modules 2 et 3 : les objectifs doivent s'y adapter, pas l'inverse
+- Rester concentré sur la fixation des objectifs et le suivi du taux d'atteinte
