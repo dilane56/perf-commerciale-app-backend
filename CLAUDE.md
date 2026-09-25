@@ -26,16 +26,16 @@ Construire une application permettant au **service commercial** de l'entreprise 
 1. ✅ **Terminé : Utilisateurs, Rôles & Permissions**
 2. ✅ **Terminé : Modèle de données KPI générique** (entités d'événements bruts + endpoints de lecture des KPI)
 3. ✅ **Terminé : Gestion du portefeuille commercial** (clients/prospects et rendez-vous)
-4. ✅ **Terminé : Objectifs commerciaux** (fixation + suivi du taux d'atteinte) — objet de ce document
-5. Tableaux de bord (vue individuelle / vue managériale)
+4. ✅ **Terminé : Objectifs commerciaux** (fixation + suivi du taux d'atteinte)
+5. ✅ **Terminé côté backend : Tableaux de bord** (vue individuelle / vue managériale) — objet de ce document
 6. Intégration Atlantis SGI (une fois les modalités d'accès connues)
 
-Ce fichier se concentre sur le **point 4**. Les points 1 à 3 sont déjà implémentés — ne pas les reconstruire.
-Les sections 5, 6 et 7 décrivent ce qui existe déjà et restent dans ce fichier à titre de référence : le
-module Objectifs (section 8) s'appuie sur les permissions du RBAC (section 5), sur le lien manager →
-commerciaux qu'il introduit lui-même sur `User` (section 8.2), et calcule ses valeurs réelles à partir des
-mêmes KPI que le module 2 (section 6), sans dupliquer ce calcul. L'entité `Transaction` relève d'Atlantis SGI
-et n'est écrite par aucun module de cette application (voir section 7.2).
+Ce fichier se concentre sur le **point 5**. Les points 1 à 4 sont déjà implémentés — ne pas les reconstruire.
+Les sections 5, 6, 7 et 8 décrivent ce qui existe déjà et restent dans ce fichier à titre de référence : le
+module Tableaux de bord (section 9) ne fait qu'ajouter le point d'entrée KPI d'équipe manquant, en
+s'appuyant sur le lien manager → commerciaux introduit par le module Objectifs (section 8.2) et sur les
+permissions du RBAC (section 5). L'entité `Transaction` relève d'Atlantis SGI et n'est écrite par aucun
+module de cette application (voir section 7.2).
 
 ---
 
@@ -190,11 +190,10 @@ app/
 > `/api/kpi/commerciaux` et `/api/kpi/commerciaux/{userId}`, protégés respectivement par `VIEW_OWN_DASHBOARD`
 > et `VIEW_ALL_DASHBOARDS`. Un jeu de démonstration est chargé par le seul profil `dev` (`db/demo`).
 >
-> **Limite levée par le module 4** : `VIEW_TEAM_DASHBOARD` restait inexploitable faute de notion d'équipe.
-> Le module Objectifs (section 8) a ajouté `manager_id` sur `User` : l'équipe d'un responsable est
-> l'ensemble des commerciaux dont `managerId` le désigne. Cela reste toutefois inexploité par le module KPI
-> lui-même — aucun endpoint `/api/kpi/equipe` n'existe encore, cela viendra avec les tableaux de bord
-> (module 5).
+> **Limite levée** : `VIEW_TEAM_DASHBOARD` restait inexploitable faute de notion d'équipe. Le module
+> Objectifs (section 8) a ajouté `manager_id` sur `User`, et le module Tableaux de bord (section 9) a
+> ajouté `GET /api/kpi/equipe` dessus : l'équipe d'un responsable est l'ensemble des commerciaux actifs
+> dont `managerId` le désigne.
 >
 > **Attention** : l'entité `Transaction` décrite plus bas existe en base, mais elle relève d'Atlantis SGI et
 > n'est alimentée par aucun endpoint d'écriture de cette application (voir section 7.2). Tant qu'Atlantis
@@ -485,16 +484,54 @@ direction (`MANAGE_ALL_OBJECTIVES`) peut alors agir pour lui.
 - **Frontend** : écrans sous `app/(commercial)/objectifs/`, avec un formulaire de fixation qui bascule
   entre « pour un commercial » et « pour une équipe » plutôt que d'exposer les deux champs en même temps.
   Le taux d'atteinte doit être visible à la fois sur la vue individuelle et sur la vue d'équipe.
-- **Évolution anticipée, à ne pas construire maintenant** : `VIEW_TEAM_DASHBOARD` a maintenant une base
-  exploitable (`managerId`), mais aucun endpoint `/api/kpi/equipe` n'existe encore — ce sera au module 5
-  (Tableaux de bord) de l'ajouter.
+- **Évolution anticipée, déjà réalisée** : `VIEW_TEAM_DASHBOARD` s'appuie maintenant sur `managerId` via
+  `GET /api/kpi/equipe`, ajouté par le module Tableaux de bord (section 9).
 
 ---
 
-## 9. Ce qui n'est PAS à faire maintenant
+## 9. Module livré (référence) : Tableaux de bord
+
+> **État** : livré côté backend, avec un périmètre volontairement réduit — voir 9.1.
+
+### 9.1. Portée retenue
+
+Les KPI (module 2) et les Objectifs (module 4) exposaient déjà des endpoints granulaires pour les trois
+vues attendues (individuelle, équipe, globale), sauf un : `GET /api/kpi/equipe`. Plutôt que de construire un
+nouveau point d'entrée consolidé qui agrégerait KPI et Objectifs en un seul appel (une forme de réponse
+supplémentaire à maintenir en double avec celles des deux modules), le choix retenu a été de **combler
+uniquement ce trou** et de laisser le frontend composer ses écrans de tableau de bord à partir des
+endpoints déjà livrés :
+
+| Vue | KPI | Objectifs |
+|---|---|---|
+| Individuelle | `GET /api/kpi/me` (`VIEW_OWN_DASHBOARD`) | `GET /api/objectifs/me` (`VIEW_OWN_DASHBOARD`) |
+| Équipe | `GET /api/kpi/equipe` (`VIEW_TEAM_DASHBOARD`, **nouveau**) | `GET /api/objectifs/equipe` (`VIEW_TEAM_DASHBOARD`) |
+| Globale (direction) | `GET /api/kpi/commerciaux` (`VIEW_ALL_DASHBOARDS`) | `GET /api/objectifs` (`VIEW_ALL_DASHBOARDS`) |
+
+### 9.2. `GET /api/kpi/equipe`
+
+Sur le même modèle que `GET /api/kpi/commerciaux` (vue direction), mais le périmètre se déduit du lien
+`managerId` de l'appelant plutôt que d'une permission de suivi individuel : l'équipe d'un responsable est
+l'ensemble des commerciaux **actifs** dont `managerId` le désigne (`UserRepository.findByManagerIdAndActiveTrue`).
+Renvoie la même forme que `KpiPeriodeResponse` (détail par commercial + totaux d'équipe).
+
+### 9.3. Points d'attention pour Claude Code
+
+- Ce périmètre réduit est un choix délibéré, pas un oubli : ne pas ajouter de module `dashboard/` ni de
+  DTO consolidé sans qu'un besoin explicite ne le justifie (par exemple si le frontend se retrouve à
+  dupliquer une logique d'agrégation qui devrait vivre côté backend).
+- `forTeam` filtre sur les membres **actifs** de l'équipe, comme `forAllCommerciaux` filtre déjà les
+  comptes actifs pour la vue direction — un commercial désactivé n'apparaît plus dans les tableaux de bord
+  courants, même si son historique reste compté dans les périodes passées auxquelles il a contribué.
+- Le frontend (hors périmètre de ce backend) doit composer ses écrans à partir des deux appels (KPI +
+  Objectifs) par vue, comme indiqué dans le tableau ci-dessus.
+
+---
+
+## 10. Ce qui n'est PAS à faire maintenant
 
 - Ne pas intégrer Atlantis SGI (en attente d'informations)
 - **Ne créer aucun endpoint ni écran d'écriture sur les transactions** : elles appartiennent à Atlantis
-- Ne pas construire les tableaux de bord ni l'endpoint `/api/kpi/equipe` (module 5, après ce document)
-- Ne pas modifier le modèle de données des modules 2 et 3 : les objectifs doivent s'y adapter, pas l'inverse
-- Rester concentré sur la fixation des objectifs et le suivi du taux d'atteinte
+- Ne pas créer de module `dashboard/` ni d'endpoint consolidé KPI + Objectifs : choix explicite, voir 9.1
+- Ne pas modifier le modèle de données des modules 2, 3 et 4 : les tableaux de bord doivent s'y adapter, pas l'inverse
+- Rester concentré sur l'endpoint KPI d'équipe manquant

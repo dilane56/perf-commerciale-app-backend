@@ -57,6 +57,25 @@ public class KpiController {
         return kpiService.forUser(principal.id(), debut, fin);
     }
 
+    @Operation(summary = "Indicateurs de mon equipe", description = "Indicateurs des commerciaux rattaches "
+            + "au responsable connecte, avec les totaux de l'equipe.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Indicateurs calcules",
+                    content = @Content(schema = @Schema(implementation = KpiPeriodeResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Permission VIEW_TEAM_DASHBOARD requise",
+                    content = @Content(schema = @Schema(implementation = ApiError.class)))
+    })
+    @GetMapping("/equipe")
+    @PreAuthorize("hasAuthority('VIEW_TEAM_DASHBOARD')")
+    public KpiPeriodeResponse kpisDeMonEquipe(
+            @AuthenticationPrincipal AuthenticatedUser principal,
+            @Parameter(description = "Debut de periode (inclus)", example = "2026-01-01")
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate debut,
+            @Parameter(description = "Fin de periode (incluse)", example = "2026-12-31")
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fin) {
+        return kpiService.forTeam(principal.id(), debut, fin);
+    }
+
     @Operation(summary = "Vue consolidee", description = "Indicateurs de tous les commerciaux suivis, avec les totaux de l'equipe.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Indicateurs calcules",

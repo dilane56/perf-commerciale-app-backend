@@ -64,6 +64,8 @@ class KpiServiceTest {
         moussa = persistUser("Moussa", "Kone", "moussa@test.local", Set.of(commercial));
         // Le responsable accompagne les commerciaux sans etre referent d'aucun client.
         fatou = persistUser("Fatou", "Sow", "fatou@test.local", Set.of(manager));
+        awa.setManager(fatou);
+        moussa.setManager(fatou);
 
         Client clientAwa = persistClient("Ibrahim Traore", awa, LocalDate.of(2026, 1, 15));
         Client clientAwaAncien = persistClient("Aminata Barry", awa, LocalDate.of(2025, 12, 1));
@@ -133,6 +135,18 @@ class KpiServiceTest {
         assertThat(consolide.totalNouveauxClients()).isEqualTo(2);
         assertThat(consolide.totalMontantCollecte()).isEqualByComparingTo("8000");
         assertThat(consolide.totalMandatsSignes()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("La vue d'equipe couvre les membres actifs du responsable, pas lui-meme")
+    void vueEquipe() {
+        KpiPeriodeResponse equipe = kpiService.forTeam(fatou.getId(), DEBUT_2026, FIN_2026);
+
+        assertThat(equipe.parCommercial())
+                .extracting(KpiCommercialResponse::email)
+                .containsExactlyInAnyOrder("awa@test.local", "moussa@test.local");
+        assertThat(equipe.totalNouveauxClients()).isEqualTo(2);
+        assertThat(equipe.totalMontantCollecte()).isEqualByComparingTo("8000");
     }
 
     @Test

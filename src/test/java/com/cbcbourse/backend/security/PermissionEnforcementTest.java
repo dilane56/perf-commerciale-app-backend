@@ -148,6 +148,29 @@ class PermissionEnforcementTest {
     }
 
     @Test
+    @DisplayName("VIEW_TEAM_DASHBOARD donne acces aux indicateurs de son equipe")
+    void kpisEquipeAvecPermission() throws Exception {
+        given(kpiService.forTeam(anyLong(), any(), any())).willReturn(
+                KpiPeriodeResponse.of(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31), List.of(unKpi())));
+
+        mockMvc.perform(get("/api/kpi/equipe")
+                        .param("debut", "2026-01-01")
+                        .param("fin", "2026-12-31")
+                        .with(authentication(authWith("VIEW_TEAM_DASHBOARD"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("Voir ses propres indicateurs ne donne pas acces a ceux de son equipe")
+    void kpisEquipeSansPermission() throws Exception {
+        mockMvc.perform(get("/api/kpi/equipe")
+                        .param("debut", "2026-01-01")
+                        .param("fin", "2026-12-31")
+                        .with(authentication(authWith("VIEW_OWN_DASHBOARD"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     @DisplayName("VIEW_ALL_DASHBOARDS donne acces a la vue consolidee")
     void vueConsolideeAvecPermission() throws Exception {
         given(kpiService.forAllCommerciaux(any(), any())).willReturn(

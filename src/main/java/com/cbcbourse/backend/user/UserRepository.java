@@ -32,4 +32,7 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
 
     /** Commerciaux rattaches a ce responsable : leur equipe, pour les objectifs et tableaux de bord. */
     List<User> findByManagerId(Long managerId);
+
+    /** Membres actifs de l'equipe, pour la vue KPI d'equipe : un compte desactive n'y apparait plus. */
+    List<User> findByManagerIdAndActiveTrue(Long managerId);
 }

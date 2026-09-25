@@ -62,6 +62,20 @@ public class KpiService {
         return KpiPeriodeResponse.of(debut, fin, parCommercial);
     }
 
+    /**
+     * Vue d'equipe : un bloc de KPI par membre actif de l'equipe du responsable designe, plus les
+     * totaux de cette equipe. Contrairement a {@link #forAllCommerciaux}, le perimetre se deduit du
+     * lien manager -> commerciaux plutot que d'une permission : c'est l'appartenance a l'equipe qui
+     * compte ici, pas le suivi individuel a l'echelle de l'entreprise.
+     */
+    public KpiPeriodeResponse forTeam(Long managerId, LocalDate debut, LocalDate fin) {
+        List<KpiCommercialResponse> parCommercial = userRepository
+                .findByManagerIdAndActiveTrue(managerId).stream()
+                .map(user -> compute(user, debut, fin))
+                .toList();
+        return KpiPeriodeResponse.of(debut, fin, parCommercial);
+    }
+
     private KpiCommercialResponse compute(User user, LocalDate debut, LocalDate fin) {
         Long userId = user.getId();
 
